@@ -1,4 +1,4 @@
-name: smyle-analysis
+name: rapcdi-analysis
 channels:
     - conda-forge
     - nodefaults
