@@ -15,22 +15,19 @@ def file_dict(filetempl, mem, stmon):
 
     #find all the relevant files
     files = glob.glob(filetemp)
-        
+
     for file in files:
-        #isolate initialization year from the file name
-        ystr = file.split('.pop.h.')[0] #currently hardcoded for POP monthly
-        y0 = int(ystr[-11:-7])
+        #isolate initialization year from the file name   
+        #splits at the ensemble member number - assumes CESM naming-order protocols are set
+        ystr = file.split('/')[-1].split('.'+memstr+'.')[0].split('-')[0][-4:]
+        y0 = int(ystr)
         filepaths[y0]=file
-        
     return filepaths
-
-
-
 
 
 def nested_file_list_by_year(filetemplate, ens, field, firstyear, lastyear, stmon):
     ''' retrieve a nested list of files for these start years and ensemble members'''
-    ens = np.array(ens)+1
+    
     yrs = np.arange(firstyear,lastyear+1)
     files = []    # a list of lists, dim0=start_year, dim1=ens
     ix = np.zeros(yrs.shape)+1
@@ -38,7 +35,8 @@ def nested_file_list_by_year(filetemplate, ens, field, firstyear, lastyear, stmo
     for yy,i in zip(yrs,range(len(yrs))):
         ffs = []  # a list of files for this yy
         file0 = ''
-        first = True
+        #first = True
+        
         for ee in ens:
             filepaths = file_dict(filetemplate, ee, stmon)
             #append file if it is new
@@ -60,14 +58,12 @@ def open_members(in_obj):
     ffs = in_obj[0]  #unwrap the list
     field = in_obj[1]
     ens = in_obj[2]
-    lm = in_obj[3]
-    chunks = in_obj[4]
-    preprocess = in_obj[5]
+    #ltime = in_obj[3]
+    chunks = in_obj[3]
+    preprocess = in_obj[4]
  
     d0 = xr.open_mfdataset(ffs,combine='nested',parallel=True,concat_dim='M',data_vars=[field],\
-                           chunks=chunks,compat='override', coords='minimal', preprocess=preprocess)
-    
-    #ADD CODE HERE THAT DETECTS L AND M FROM d0
+                           chunks=chunks, compat='override', coords='minimal', preprocess=preprocess)
     
     # quick fix to adjust time vector for monthly data  
     nmonths = len(d0.time)
@@ -75,7 +71,8 @@ def open_members(in_obj):
     d0['time'] =xr.cftime_range(str(yr0),periods=nmonths,freq='MS')
 
     d0 = d0.assign_coords(M=("M",ens))
-    d0 = d0.assign_coords(L=("time",lm))
+    ltimes = np.arange(1,nmonths+1,1,dtype='int')
+    d0 = d0.assign_coords(L=("time",ltimes))
     d0 = d0.swap_dims({'time': 'L'})
     d0 = d0.reset_coords(["time"])
     
@@ -83,13 +80,14 @@ def open_members(in_obj):
 
 
 
-def get_monthly_data(filetemplate, ens, leads, field, firstyear, lastyear, stmon, preprocess, chunks={}, client=[]):
+def get_monthly_data(filetemplate, ens, field, firstyear, lastyear, stmon, preprocess, chunks={}, client=[]):
     ''' returns dask array containing the requested hindcast ensemble '''
 
     ds = xr.Dataset()    #instantiate Dataset #is this necessary?
-    lm = np.array(leads)+1
-    files,yrs = nested_file_list_by_year(filetemplate, ens, field, firstyear, lastyear, stmon)
+    #lm = np.array(leads)+1
     ens = np.array(ens)+1
+    files,yrs = nested_file_list_by_year(filetemplate, ens, field, firstyear, lastyear, stmon)
+    
     
     # all members should have the same number of files, otherwise abort
     nfs = np.array([len(ffs) for ffs in files])
@@ -100,7 +98,7 @@ def get_monthly_data(filetemplate, ens, leads, field, firstyear, lastyear, stmon
         
     if complete_set: #read all data using map/gather
         dsets = []
-        in_obj = [[ffs, field, ens, lm, chunks, preprocess] for ffs in files]
+        in_obj = [[ffs, field, ens, chunks, preprocess] for ffs in files]
         if not client:
             dsets = [ open_members(one_hindcast) for one_hindcast in in_obj ]
         else:  
@@ -109,7 +107,6 @@ def get_monthly_data(filetemplate, ens, leads, field, firstyear, lastyear, stmon
         tmp = xr.concat(dsets,dim='Y',data_vars=[field,'time','time_bound'], coords='minimal', compat='override')
         tmp = tmp.assign_coords(Y=("Y",yrs))
 
-    print(tmp)
     ds[field] = tmp[field]
     ds['time'] = tmp['time']
     ds['time_bound'] = tmp['time_bound']
