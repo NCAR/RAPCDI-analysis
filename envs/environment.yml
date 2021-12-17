@@ -1,6 +1,7 @@
 name: rapcdi-analysis
 channels:
     - conda-forge
+    - ncar
     - nodefaults
 dependencies:
     - bokeh=1.4
@@ -16,6 +17,8 @@ dependencies:
     - dask-labextension
     - eofs
     - esmpy
+    - geocat-viz
+    - geocat-comp
     - holoviews
     - intake
     - intake-esm
